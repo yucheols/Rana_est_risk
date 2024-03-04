@@ -101,3 +101,40 @@ points(chensinensis, col = 'blue')
 points(dybowskii, col = 'green')
 points(huanrenensis, col = 'black')
 points(kukunoris, col = 'orange')
+
+
+##### Part 4 ::: background data -----------------------------------------------------------------------------------------------------
+### automate buffer making
+buffMaker <- function(occs_list, envs, buff_dist) {
+  output <- list()
+  
+  for (i in 1:length(occs_list)) {
+    occs.sf <- sf::st_as_sf(occs_list[[i]], coords = c('long', 'lat'), crs = raster::crs(envs))
+    eq_area = '+proj=eck4 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs'
+    occs.sf <- sf::st_transform(occs.sf, crs = eq_area)
+    
+    buff <- sf::st_buffer(occs.sf, dist = buff_dist) %>%
+      sf::st_union() %>%
+      sf::st_sf() %>%
+      sf::st_transform(crs = raster::crs(envs))
+    
+    output[[i]] <- buff
+  }
+  
+  return(output)
+}
+
+# run
+buffers <- buffMaker(occs_list = list(amurensis, chensinensis, coreana, dybowskii, huanrenensis, kukunoris), 
+                     envs = envs, buff_dist = 300000)
+
+plot(envs[[1]])
+plot(buffers[[1]], border = 'blue', lwd = 2, add = T)
+
+### sample background points
+bgSampler <- function() {
+  
+}
+
+
+
