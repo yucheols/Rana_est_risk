@@ -12,6 +12,9 @@ Sys.setlocale("LC_CTYPE", ".1251")
 Sys.getlocale()
 
 ##### Part 1 ::: envs data -----------------------------------------------------------------------------------------------------
+# import China polygon
+ch_poly <- rgdal::readOGR('E:/Asia_shp/China/CHN_adm0.shp')
+
 # process envs
 clim <- raster::stack(list.files(path = 'E:/env layers/worldclim', pattern = '.tif$', full.names = T))
 clim <- raster::crop(clim, extent(ch_poly))
@@ -36,14 +39,11 @@ plot(envs[[1]])
 
 
 ##### Part 2 ::: occs data -----------------------------------------------------------------------------------------------------
-# import China polygon
-ch_poly <- rgdal::readOGR('E:/Asia_shp/Chinas/CHN_adm0.shp')
-
 # acquire occs data
-megaSDM::OccurrenceCollection(spplist = c('Rana amurensis', 'Rana chensinensis', 'Rana coreana', 
-                                          'Rana dybowskii', 'Rana huanrenensis', 'Rana kukunoris'),
-                              output = 'data/occs',
-                              trainingarea = extent(ch_poly))
+#megaSDM::OccurrenceCollection(spplist = c('Rana amurensis', 'Rana chensinensis', 'Rana coreana', 
+#                                          'Rana dybowskii', 'Rana huanrenensis', 'Rana kukunoris'),
+#                              output = 'data/occs',
+#                              trainingarea = extent(ch_poly))
 
 # compile occs
 occs <- list.files(path = 'data/occs', pattern = '.csv', full.names = T) %>%
@@ -125,16 +125,33 @@ buffMaker <- function(occs_list, envs, buff_dist) {
 }
 
 # run
-buffers <- buffMaker(occs_list = list(amurensis, chensinensis, coreana, dybowskii, huanrenensis, kukunoris), 
+buffers <- buffMaker(occs_list = list(amurensis, chensinensis, dybowskii, huanrenensis, kukunoris), 
                      envs = envs, buff_dist = 300000)
 
 plot(envs[[1]])
-plot(buffers[[1]], border = 'blue', lwd = 2, add = T)
+plot(buffers[[4]], border = 'blue', lwd = 2, add = T)
 
-### sample background points
-bgSampler <- function() {
+### automate bg sampling 
+bgSampler <- function(ex_bio, buffers, n, occs_list, excludep) {
+  bg.out <- list()
+  prog_bar = progress::progress_bar$new(total = length(buffers))
   
+  for (i in 1:length(buffers)) {
+    prog_bar$tick()
+    
+    mask <- raster::mask(ex_bio, buffers[[i]])
+    bg <- dismo::randomPoints(mask = mask, n = n, p = occs_list[[i]], excludep = excludep)
+    colnames(bg) = c('long', 'lat')
+    
+    bg.out[[i]] <- bg
+  }
 }
 
+# sample background points
+bg <- bgSampler(ex_bio = envs[[1]], buffers = buffers, n = 10000, 
+                occs_list = list(amurensis, chensinensis, dybowskii, huanrenensis, kukunoris), excludep = T)
 
 
+mask <- raster::mask(envs[[1]], buffers[[4]])
+bg <- dismo::randomPoints(mask = mask, n = 10000, p = huanrenensis, excludep = T)
+colnames(bg) = c('long', 'lat')
