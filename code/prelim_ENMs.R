@@ -124,9 +124,9 @@ buffMaker <- function(occs_list, envs, buff_dist) {
   return(output)
 }
 
-# run
+# run == 700 km buffers
 buffers <- buffMaker(occs_list = list(amurensis, chensinensis, dybowskii, huanrenensis, kukunoris), 
-                     envs = envs, buff_dist = 300000)
+                     envs = envs, buff_dist = 700000)
 
 plot(envs[[1]])
 plot(buffers[[4]], border = 'blue', lwd = 2, add = T)
@@ -145,13 +145,29 @@ bgSampler <- function(ex_bio, buffers, n, occs_list, excludep) {
     
     bg.out[[i]] <- bg
   }
+  return(bg.out)
 }
+
 
 # sample background points
 bg <- bgSampler(ex_bio = envs[[1]], buffers = buffers, n = 10000, 
                 occs_list = list(amurensis, chensinensis, dybowskii, huanrenensis, kukunoris), excludep = T)
 
+# lets see if this is done correctly
+plot(envs[[1]])
 
-mask <- raster::mask(envs[[1]], buffers[[4]])
-bg <- dismo::randomPoints(mask = mask, n = 10000, p = huanrenensis, excludep = T)
-colnames(bg) = c('long', 'lat')
+plot(buffers[[1]], add = T, lwd = 2, border = 'blue')
+points(bg[[1]])
+
+
+##### Part 5 ::: select envs data -----------------------------------------------------------------------------------------------------
+# use ENMTools to sort out highly correlated rasters
+cor.mat <- ENMTools::raster.cor.matrix(env = envs, method = 'pearson')
+print(cor.mat)
+
+find.cor <- caret::findCorrelation(data.matrix(cor.mat), cutoff = abs(0.7))
+envs <- raster::dropLayer(envs, sort(find.cor))
+print(envs)
+
+##### Part 6 ::: model fitting -----------------------------------------------------------------------------------------------------
+# make SWD
