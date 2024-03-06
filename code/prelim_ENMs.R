@@ -170,4 +170,88 @@ envs <- raster::dropLayer(envs, sort(find.cor))
 print(envs)
 
 ##### Part 6 ::: model fitting -----------------------------------------------------------------------------------------------------
-# make SWD
+### make SWD
+swd.maker <- function(occs.list, bg.list, spp.list, env, categ) {
+  out.swd <- list()
+  
+  for (i in 1:length(occs.list)) {
+    swd <- SDMtune::prepareSWD(species = spp.list[[i]], env = terra::rast(env), 
+                               p = occs.list[[i]], a = bg.list[[i]], categorical = categ, verbose = T)
+    
+    out.swd[[i]] <- swd
+    print('==============   Done!   ==============')
+  }
+  return(out.swd)
+}
+
+# make SWD per species
+swd <- swd.maker(occs.list = list(amurensis, chensinensis, dybowskii, huanrenensis, kukunoris),
+                 bg.list = bg, spp.list = c('amurensis', 'chensinensis', 'dybowskii', 'huanrenensis', 'kukunoris'),
+                 env = envs, categ = NULL)
+
+### generate CV folds
+folds <- function(occs.list, bg.list, kfolds) {
+  folds.out <- list()
+  
+  for (i in 1:length(occs.list)) {
+    folds <- ENMeval::get.randomkfold(occs = occs.list[[i]], bg = bg.list[[i]], kfolds = kfolds)
+    folds.out[[i]] <- folds
+  }
+  return(folds.out)
+}
+
+# get folds
+cv.folds <- folds(occs.list = list(amurensis, chensinensis, dybowskii, huanrenensis, kukunoris), bg.list = bg, kfolds = 10)
+print(cv.folds)
+
+
+### generate default models
+# modeling automation
+auto.model <- function(swd.list, method, folds, progress, iter, type) {
+  models <- list()
+  
+  for (i in 1:length(swd.list)) {
+    model <- SDMtune::train(method = method, data = swd.list[[i]], folds = folds[[i]], progress = progress, iter = iter, type = type)
+    models[[i]] <- model
+  }
+  return(models)
+}
+
+# make models
+rana.enms <- auto.model(swd.list = swd, method = 'Maxent', folds = cv.folds, progress = T, iter = 5000, type = 'cloglog')
+print(rana.enms)
+
+# evaluate models
+for (i in 1:length(rana.enms)) {
+  print(auc(model = rana.enms[[i]], test = T))
+}
+
+##### Part 6 ::: model prediction -----------------------------------------------------------------------------------------------------
+# automate predictions
+model.pred <- function(models, data, type, clamp, progress) {
+  pred.out <- list()
+  
+  for (i in 1:length(models)) {
+    pred <- SDMtune::predict(object = models[[i]], data = terra::rast(data), 
+                             type = type, clamp = clamp, progress = progress) %>% raster::raster()
+    pred.out[[i]] <- pred 
+  }
+  return(pred.out)
+}
+
+# make pred
+preds <- model.pred(models = rana.enms, data = envs, type = 'cloglog', clamp = T, progress = T)
+preds <- raster::stack(preds)
+
+plot(preds[[1]])
+plot(preds[[2]])
+
+# plot models
+
+##### Part 7 ::: response curves -----------------------------------------------------------------------------------------------------
+
+
+##### Part 8 ::: model projections -----------------------------------------------------------------------------------------------------
+
+
+
