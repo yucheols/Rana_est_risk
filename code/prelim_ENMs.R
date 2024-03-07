@@ -5,6 +5,9 @@ library(plyr)
 library(dplyr)
 library(readr)
 library(SDMtune)
+library(ggplot2)
+library(rasterVis)
+library(pals)
 
 # prevent encoding error
 Sys.getlocale()
@@ -12,6 +15,7 @@ Sys.setlocale("LC_CTYPE", ".1251")
 Sys.getlocale()
 
 ##### Part 1 ::: envs data -----------------------------------------------------------------------------------------------------
+### calibration range
 # import China polygon
 ch_poly <- rgdal::readOGR('E:/Asia_shp/China/CHN_adm0.shp')
 
@@ -251,7 +255,60 @@ plot(preds[[2]])
 ##### Part 7 ::: response curves -----------------------------------------------------------------------------------------------------
 
 
+
+
+
 ##### Part 8 ::: model projections -----------------------------------------------------------------------------------------------------
+# ROK polygon
+rok <- rgdal::readOGR('E:/Asia_shp/South Korea/KOR_adm0.shp')
+
+# prep projections layers
+clim2 <- raster::stack(list.files(path = 'E:/env layers/worldclim', pattern = '.tif$', full.names = T))
+clim2 <- raster::crop(clim2, extent(rok))
+clim2 <- raster::mask(clim2, rok)
+
+topo2 <- raster('E:/env layers/elev_worldclim/wc2.1_30s_elev.tif')
+topo2 <- raster::crop(topo2, extent(rok))
+topo2 <- raster::mask(topo2, rok)
+
+land2 <- raster::stack(list.files(path = 'E:/env layers/land cover', pattern = '.tif$', full.names = T))
+land2 <- raster::stack(subset(land2, c('cultivated', 'water')))
+land2 <- raster::crop(land2, extent(rok))
+land2 <- raster::mask(land2, rok)
+
+# stack
+envs2 <- raster::stack(clim2, topo2, land2)
+names(envs2) = c('bio1', 'bio10', 'bio11', 'bio12', 'bio13', 'bio14', 'bio15', 'bio16', 'bio17', 'bio18', 'bio19', 
+                'bio2', 'bio3', 'bio4', 'bio5', 'bio6', 'bio7', 'bio8', 'bio9', 'elev', 'cultivated', 'water')
+
+plot(envs2[[1]])
+
+# make predictions to ROK
+proj <- model.pred(models = rana.enms, data = envs2, type = 'cloglog', clamp = T, progress = T)
+proj.out <- raster::stack(proj)
+plot(proj.out)                       # model order == amurensis, chensinensis, dybowskii, huanrenensis, kukunoris
+
+names(proj.out) = c('R.amurensis', 'R.chensinensis', 'R.dybowskii', 'R.huanrenensis', 'R.kukunoris')
 
 
+##### Part 9 ::: plot outputs -----------------------------------------------------------------------------------------------------
+# plot
+gplot(proj.out) +
+  geom_tile(aes(fill = value)) +
+  facet_wrap(~ variable) +
+  coord_equal() +
+  scale_fill_gradientn(colors = rev(as.vector(ocean.thermal(1000))),
+                       na.value = NA,
+                       name = 'Suitability') +
+  xlab('Long') + ylab('Lat') +
+  theme_bw() +
+  theme(strip.text = element_text(face = 'italic', size = 14),
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 12)) 
+
+
+# save
+ggsave('output/plot/prelim_output.png', width = 30, height = 22, dpi = 600, units = 'cm')
 
