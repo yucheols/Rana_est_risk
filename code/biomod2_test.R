@@ -65,7 +65,7 @@ plot(myBiomodData.multi)
 
 #####  part 2 ::: data partitioning == cross-validation ------------------------------  
 ## k-fold method
-cv.k <- bm_CrossValidation(bm.format = myBiomodData.multi,
+cv.k <- bm_CrossValidation(bm.format = myBiomodData,
                            strategy = 'kfold',
                            nb.rep = 2,
                            k = 10)
@@ -73,7 +73,7 @@ cv.k <- bm_CrossValidation(bm.format = myBiomodData.multi,
 head(cv.k)
 
 ## geographically stratified method
-cv.s <- bm_CrossValidation(bm.format = myBiomodData.multi,
+cv.s <- bm_CrossValidation(bm.format = myBiomodData,
                            strategy = 'strat',
                            k = 2,
                            balance = 'presences',
@@ -94,14 +94,14 @@ print(opt.b)
 opt.t <- bm_ModelingOptions(data.type = 'binary',
                             models = c('SRE', 'XGBOOST'),
                             strategy = 'tuned',
-                            bm.format = myBiomodData.multi)
+                            bm.format = myBiomodData)
 
 print(opt.t)
 
 
-#####  part 4 ::: run single models ------------------------------ '
+#####  part 4 ::: run single models ------------------------------ 
 # run models
-myBiomodModelOut <- BIOMOD_Modeling(bm.format = myBiomodData.multi,
+myBiomodModelOut <- BIOMOD_Modeling(bm.format = myBiomodData,
                                     modeling.id = 'AllModels',
                                     CV.strategy = 'random',
                                     CV.nb.rep = 2,
@@ -115,4 +115,101 @@ myBiomodModelOut <- BIOMOD_Modeling(bm.format = myBiomodData.multi,
 get_evaluations(myBiomodModelOut)
 get_variables_importance(myBiomodModelOut)
 
-# Represent evaluation scores & variables importance
+# plot evaluation scores
+bm_PlotEvalBoxplot(bm.out = myBiomodModelOut)
+bm_PlotEvalBoxplot(bm.out = myBiomodModelOut, group.by = c('algo', 'algo'))
+bm_PlotEvalBoxplot(bm.out = myBiomodModelOut, group.by = c('algo', 'run'))
+
+# plot variables importance
+bm_PlotVarImpBoxplot(bm.out = myBiomodModelOut, group.by = c('expl.var', 'algo', 'algo'))
+bm_PlotVarImpBoxplot(bm.out = myBiomodModelOut, group.by = c('expl.var', 'algo', 'run'))
+bm_PlotVarImpBoxplot(bm.out = myBiomodModelOut, group.by = c('algo', 'expl.var', 'run'))
+
+# plot response curves
+bm_PlotResponseCurves(bm.out = myBiomodModelOut, 
+                      models.chosen = get_built_models(myBiomodModelOut)[c(1:3, 12:14)],
+                      fixed.var = 'median')
+
+bm_PlotResponseCurves(bm.out = myBiomodModelOut, 
+                      models.chosen = get_built_models(myBiomodModelOut)[c(1:3, 12:14)],
+                      fixed.var = 'min')
+
+bm_PlotResponseCurves(bm.out = myBiomodModelOut, 
+                      models.chosen = get_built_models(myBiomodModelOut)[3],
+                      fixed.var = 'median',
+                      do.bivariate = TRUE)
+
+
+#####  part 5 ::: project single models ------------------------------ 
+myBiomodProj <- BIOMOD_Projection(bm.mod = myBiomodModelOut,
+                                  proj.name = 'Current',
+                                  new.env = myExpl,
+                                  models.chosen = 'all',
+                                  metric.binary = 'all',
+                                  metric.filter = 'all',
+                                  build.clamping.mask = T)
+
+plot(myBiomodProj)
+
+
+#####  part 6 ::: run ensemble models ------------------------------ 
+myBiomodEM <- BIOMOD_EnsembleModeling(bm.mod = myBiomodModelOut,
+                                      models.chosen = 'all',
+                                      em.by = 'all',
+                                      em.algo = c('EMmean', 'EMcv', 'EMci', 'EMmedian', 'EMca', 'EMwmean'),
+                                      metric.select = 'TSS',
+                                      metric.select.thresh = c(0.7),
+                                      metric.eval = c('ROC', 'TSS', 'BOYCE'),
+                                      var.import = 3,
+                                      EMci.alpha = 0.05,
+                                      EMwmean.decay = 'proportional')
+
+print(myBiomodEM)
+
+# Get evaluation scores & variables importance
+get_evaluations(myBiomodEM)
+get_variables_importance(myBiomodEM)
+
+# plot evaluation scores
+bm_PlotEvalMean(bm.out = myBiomodEM, group.by = 'full.name')
+bm_PlotEvalBoxplot(bm.out = myBiomodEM, group.by = c('full.name', 'full.name'))
+
+# plot variables importance
+bm_PlotVarImpBoxplot(bm.out = myBiomodEM, group.by = c('expl.var', 'full.name', 'full.name'))
+bm_PlotVarImpBoxplot(bm.out = myBiomodEM, group.by = c('expl.var', 'algo', 'merged.by.run'))
+bm_PlotVarImpBoxplot(bm.out = myBiomodEM, group.by = c('algo', 'expl.var', 'merged.by.run'))
+
+# plot response curves
+bm_PlotResponseCurves(bm.out = myBiomodEM, 
+                      models.chosen = get_built_models(myBiomodEM)[c(1, 6, 7)],
+                      fixed.var = 'median')
+
+bm_PlotResponseCurves(bm.out = myBiomodEM, 
+                      models.chosen = get_built_models(myBiomodEM)[c(1, 6, 7)],
+                      fixed.var = 'min')
+
+bm_PlotResponseCurves(bm.out = myBiomodEM, 
+                      models.chosen = get_built_models(myBiomodEM)[7],
+                      fixed.var = 'median',
+                      do.bivariate = TRUE)
+
+
+#####  part 7 ::: project ensemble models ------------------------------ 
+
+# Project ensemble models (from single projections)
+myBiomodEMProj <- BIOMOD_EnsembleForecasting(bm.em = myBiomodEM, 
+                                             bm.proj = myBiomodProj,
+                                             models.chosen = 'all',
+                                             metric.binary = 'all',
+                                             metric.filter = 'all')
+
+plot(myBiomodEMProj)
+
+# Project ensemble models (building single projections)
+myBiomodEMProj2 <- BIOMOD_EnsembleForecasting(bm.em = myBiomodEM, 
+                                              bm.proj = myBiomodProj,
+                                              models.chosen = 'all',
+                                              metric.binary = 'all',
+                                              metric.filter = 'all')
+
+plot(myBiomodEMProj2)
