@@ -203,3 +203,24 @@ test.models <- model.tune(list.models = def.mods,
                           save_models = T,
                           interactive = F,
                           progress = T)
+
+# check results
+glimpse(test.models$results)
+glimpse(test.models$tuned.models)
+
+# function to retrieve optimal parameter combinations
+get.opt <- function(list.results) {
+  output <- list()
+  
+  for (i in 1:length(list.results)) {
+    opt <- list.results[[i]] %>% dplyr::filter(diff_AUC == min(diff_AUC)) %>%
+      dplyr::filter(test_AUC == max(test_AUC))
+    
+    output[[i]] <- opt
+  }
+  return(output)
+}
+
+# get optimal parameter combinations
+opt.params <- get.opt(list.results = test.models$results)
+print(opt.params)
