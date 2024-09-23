@@ -1,5 +1,8 @@
 #####  use ENMwrap and other packages to generate models  ----------
 
+# set random seed
+set.seed(333)
+
 # load packages
 library(ENMwrap)
 library(megaSDM)
@@ -52,7 +55,7 @@ for (i in 1:nlayers(envs)) {
   writeRaster(r, filename = file_name, overwrite = T)
 }
 
-# import shortcut 
+# import shortcut == calibration range
 envs <- raster::stack(list.files(path = 'data/envs/calibration', pattern = '.bil', full.names = T))
 
 #####  part 2 ::: occurrence data ----------
@@ -70,6 +73,7 @@ occs <- list.files(path = 'data/occs', pattern = '.csv', full.names = T) %>%
 
 colnames(occs) = c('species', 'long', 'lat')
 head(occs)
+tail(occs)
 
 # check the list of species
 unique(occs$species)
@@ -90,10 +94,10 @@ occs.thin <- occs_thinner(occs_list = occs.list, envs = envs[[1]], long = 'long'
 #####  part 3 ::: background data ----------
 
 # make buffers per species == 700 km circular buffers
-buff <- buffMaker(occs_list = occs.thin, envs = envs, buff_dist = 700000)
+buff <- buff_maker(occs_list = occs.thin, envs = envs, buff_dist = 700000)
 
 # sample bg
-bg.list <- bgSampler(envs = envs[[1]], n = 10000, occs_list = occs.thin, buffer_list = buff, excludep = T, method = 'buffer')
+bg.list <- bg_sampler(envs = envs[[1]], n = 10000, occs_list = occs.thin, buffer_list = buff, excludep = T, method = 'buffer')
 
 # export bg
 for (i in 1:length(bg.list)) {
@@ -208,6 +212,9 @@ test.models <- model.tune(list.models = def.mods,
 glimpse(test.models$results)
 glimpse(test.models$tuned.models)
 
+# export model object
+saveRDS(test.models, 'output/models/model_test_output.rds')
+
 # function to retrieve optimal parameter combinations
 get.opt <- function(list.results) {
   output <- list()
@@ -224,3 +231,261 @@ get.opt <- function(list.results) {
 # get optimal parameter combinations
 opt.params <- get.opt(list.results = test.models$results)
 print(opt.params)
+
+
+#' Rana amurensis      == lqhpt 1.0 == 6th model
+#' Rana chensinensis   == lq 1.5    == 8th model
+#' Rana coreana        == discard   
+#' Rana dybowskii      == h 1.0     == 3rd model
+#' Rana huanrenensis   == lqh 1.0   == 4th model
+#' Rana kukunoris      == h 2.5     == 21st model
+
+# assign models to new objects
+amurensis_model <- test.models$tuned.models[[1]][[6]]
+chensinensis_model <- test.models$tuned.models[[2]][[8]]
+dybowskii_model <- test.models$tuned.models[[4]][[3]]
+huanrenensis_model <- test.models$tuned.models[[5]][[4]]
+kukunoris_model <- test.models$tuned.models[[6]][[21]]
+
+
+#####  part 6 ::: variable importance ----------
+
+# get variable importance
+amurensis_varimp <- maxentVarImp(amurensis_model)
+chensinensis_varimp <- maxentVarImp(chensinensis_model)
+dybowskii_varimp <- maxentVarImp(dybowskii_model)
+huanrenensis_varimp <- maxentVarImp(huanrenensis_model)
+kukunoris_varimp <- maxentVarImp(kukunoris_model)
+
+# group into list
+varimp_list <- list(amurensis_varimp, chensinensis_varimp, dybowskii_varimp, huanrenensis_varimp, kukunoris_varimp)
+sp.names = list('R.amurensis', 'R.chensinensis', 'R.dybowskii', 'R.huanrenensis', 'R.kukunoris')
+
+# export
+for (i in 1:length(varimp_list)) {
+  file <- varimp_list[[i]]
+  write.csv(file, paste0('output/varimp/', sp.names[[i]], '_varimp.csv'))
+}
+
+#####  part 7 ::: response curve ----------
+
+###' function to pull out response data from SDMtune model outputs
+respDataPull <- function(model, var, type, only_presence, marginal, species_name) {
+  
+  plotdata.list <- list()
+  
+  for (i in 1:length(var)) {
+    plotdata <- plotResponse(model = model, var = var[[i]], type = type, only_presence = only_presence, marginal = marginal)
+    plotdata <- ggplot2::ggplot_build(plotdata)$data
+    plotdata <- plotdata[[1]]
+    
+    plotdata <- plotdata[, c(1:4)]
+    plotdata$species <- species_name
+    plotdata$var <- var[[i]]
+    
+    plotdata.list[[i]] <- plotdata
+  }
+  plotdata.df <- dplyr::bind_rows(plotdata.list) 
+  return(plotdata.df)
+}
+
+###' amurensis
+# get data
+amurensis_resp <- respDataPull(species_name = 'R.amurensis', model = amurensis_model, var = names(envs.sub), 
+                               type = 'cloglog', only_presence = F, marginal = F)
+
+# plot
+plot_response(amurensis_resp) +
+  theme(axis.title = element_text(size = 16, face = 'bold'),
+        axis.title.x = element_text(margin = margin(t = 20)),
+        axis.title.y = element_text(margin = margin(r = 20)),
+        axis.text = element_text(size = 12),
+        strip.text = element_text(size = 16))
+
+# export
+ggsave('output/plot/amurensis_resp.jpg', width = 30, height = 22, dpi = 600, units = 'cm')
+
+
+###' chensinensis
+# get data
+chensinensis_resp <- respDataPull(species_name = 'R.chensinensis', model = chensinensis_model, var = names(envs.sub),
+                                  type = 'cloglog', only_presence = F, marginal = F)
+
+# plot
+plot_response(chensinensis_resp) +
+  theme(axis.title = element_text(size = 16, face = 'bold'),
+        axis.title.x = element_text(margin = margin(t = 20)),
+        axis.title.y = element_text(margin = margin(r = 20)),
+        axis.text = element_text(size = 12),
+        strip.text = element_text(size = 16))
+
+# export
+ggsave('output/plot/chensinensis_resp.jpg', width = 30, height = 22, dpi = 600, units = 'cm')
+
+
+###' dybowskii
+# get data
+dybowskii_resp <- respDataPull(species_name = 'R.dybowskii', model = dybowskii_model, var = names(envs.sub),
+                               type = 'cloglog', only_presence = F, marginal = F)
+
+# plot
+plot_response(dybowskii_resp) +
+  theme(axis.title = element_text(size = 16, face = 'bold'),
+        axis.title.x = element_text(margin = margin(t = 20)),
+        axis.title.y = element_text(margin = margin(r = 20)),
+        axis.text = element_text(size = 12),
+        strip.text = element_text(size = 16))
+
+# export
+ggsave('output/plot/dybowskii_resp.jpg', width = 30, height = 22, dpi = 600, units = 'cm')
+
+
+###' huanrenensis 
+# get data
+huanrenensis_resp <- respDataPull(species_name = 'R.huanrenensis', model = huanrenensis_model, var = names(envs.sub),
+                                  type = 'cloglog', only_presence = F, marginal = F)
+
+# plot
+plot_response(huanrenensis_resp) +
+  theme(axis.title = element_text(size = 16, face = 'bold'),
+        axis.title.x = element_text(margin = margin(t = 20)),
+        axis.title.y = element_text(margin = margin(r = 20)),
+        axis.text = element_text(size = 12),
+        strip.text = element_text(size = 16))
+
+# export
+ggsave('output/plot/huanrenensis_resp.jpg', width = 30, height = 22, dpi = 600, units = 'cm')
+
+
+###' kukunoris
+# get data
+kukunoris_resp <- respDataPull(species_name = 'R.kukunoris', model = kukunoris_model, var = names(envs.sub),
+                               type = 'cloglog', only_presence = F, marginal = F)
+
+# plot
+plot_response(kukunoris_resp) +
+  theme(axis.title = element_text(size = 16, face = 'bold'),
+        axis.title.x = element_text(margin = margin(t = 20)),
+        axis.title.y = element_text(margin = margin(r = 20)),
+        axis.text = element_text(size = 12),
+        strip.text = element_text(size = 16))
+
+# export
+ggsave('output/plot/kukunoris_resp.jpg', width = 30, height = 22, dpi = 600, units = 'cm')
+
+
+#####  part 8 ::: model thresholds ----------
+
+# automate
+getTh <- function(model.list) {
+  thresh.out <- list()
+  
+  for (i in 1:length(model.list)) {
+    th <- SDMtune::maxentTh(combineCV(model = model.list[[i]]))
+    thresh.out[[i]] <- th
+  }
+  return(thresh.out)
+}
+
+# get thresholds
+model.th <- getTh(model.list = list(amurensis_model, chensinensis_model, dybowskii_model, huanrenensis_model, kukunoris_model))
+print(model.th)
+
+# export
+for (i in 1:length(model.th)) {
+  file <- model.th[[i]]
+  write.csv(model.th, paste0('output/threshold/', sp.names[[i]], '_thresh.csv'))
+}
+
+#####  part 9 ::: model prediction ----------
+
+# put models into a new list
+opt.models <- list(models = c(amurensis_model, chensinensis_model, dybowskii_model, huanrenensis_model, kukunoris_model),
+                   sp.names = c('R.amurensis', 'R.chensinensis', 'R.dybowskii', 'R.huanrenensis', 'R.kukunoris'))
+
+# automate predictions
+model.pred2 <- function(models, sp.names, data, type, clamp, progress) {
+  pred.out <- list()
+  
+  for (i in 1:length(models)) {
+    pred <- SDMtune::predict(object = models[[i]], data = terra::rast(data), 
+                             type = type, clamp = clamp, progress = progress) %>% raster::raster()
+    pred.out[[i]] <- pred
+  }
+  pred.out <- raster::stack(pred.out)
+  names(pred.out) = sp.names
+  return(pred.out)
+}
+
+# make predictions
+opt.pred <- model.pred2(models = opt.models$models, sp.names = opt.models$sp.names, data = envs.sub, type = 'cloglog', clamp = T, progress = T)
+print(opt.pred)
+
+# plot predictions
+plot_preds(preds = opt.pred, poly = ch_poly, pred.names = names(opt.pred), colors = rev(as.vector(pals::ocean.thermal(1000))))
+
+
+#####  part 10 ::: model projection to R Korea ----------
+
+### prep projection range
+# import R Korea polygon
+kr_poly <- rgdal::readOGR('E:/Asia_shp/South Korea/KOR_adm0.shp')
+
+# climate 
+clim <- raster::stack(list.files(path = 'E:/env layers/worldclim', pattern = '.tif$', full.names = T))
+clim <- raster::crop(clim, extent(kr_poly))
+clim <- raster::mask(clim, kr_poly)
+
+# topo
+topo <- raster('E:/env layers/elev_worldclim/wc2.1_30s_elev.tif')
+topo <- raster::crop(topo, extent(kr_poly))
+topo <- raster::mask(topo, kr_poly)
+
+# land cover
+land <- raster::stack(list.files(path = 'E:/env layers/land cover', pattern = '.tif$', full.names = T))
+land <- raster::stack(subset(land , c('cultivated', 'water')))
+land <- raster::crop(land, extent(kr_poly))
+land <- raster::mask(land, kr_poly)
+
+# stack them
+envs.prj <- raster::stack(clim, topo, land)
+print(envs.prj)
+plot(envs.prj[[1]])
+
+# rename layers
+names(envs.prj) = c('bio1','bio10','bio11','bio12','bio13','bio14','bio15','bio16','bio17','bio18','bio19',
+                    'bio2','bio3','bio4','bio5','bio6','bio7','bio8','bio9','elev','cultivated','water')
+
+# export processed projection layers
+for (i in 1:nlayers(envs.prj)) {
+  r <- envs.prj[[i]]
+  file_name <- paste0('data/envs/projection/', names(envs.prj)[i], '.bil')
+  writeRaster(r, filename = file_name, overwrite = T)
+}
+
+# subset the projection layers to needed layers
+envs.prj <- raster::stack(list.files(path = 'data/envs/projection', pattern = '.bil', full.names = T))
+envs.prj <- raster::stack(subset(envs.prj, c('bio1','bio3','bio4','bio12','bio15','cultivated','water')))
+
+print(envs.prj)
+plot(envs.prj[[1]])
+
+# model projection
+kor.pred <- model.pred2(models = opt.models$models, sp.names = opt.models$sp.names, data = envs.prj, type = 'cloglog', clamp = T, progress = T)
+print(kor.pred)                                                    
+
+# plot projected models
+plot_preds(preds = kor.pred, poly = kr_poly, colors = rev(as.vector(pals::ocean.thermal(1000))), pred.names = names(kor.pred)) 
+ggsave('output/plot/result_output.png', width = 30, height = 22, dpi = 600, units = 'cm')
+
+
+#####  part 11 ::: extrapolation risk ----------
+
+# conduct MESS
+mess <- ntbox::ntb_mess(M_stack = envs.sub, G_stack = envs.prj)
+
+print(mess)
+plot(mess)
+
+# plot 
+                                                          
