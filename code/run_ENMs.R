@@ -475,11 +475,42 @@ kor.pred <- model.pred2(models = opt.models$models, sp.names = opt.models$sp.nam
 print(kor.pred)                                                    
 
 # plot projected models
-plot_preds(preds = kor.pred, poly = kr_poly, colors = rev(as.vector(pals::ocean.thermal(1000))), pred.names = names(kor.pred)) 
-ggsave('output/plot/result_output.png', width = 30, height = 22, dpi = 600, units = 'cm')
+plot_preds(preds = kor.pred, poly = kr_poly, colors = rev(as.vector(pals::ocean.thermal(1000))), pred.names = names(kor.pred), ncol = 5, nrow = 1) 
+ggsave('output/plot/result_output.png', width = 35, height = 8, dpi = 600, units = 'cm')
 
 
-#####  part 11 ::: extrapolation risk ----------
+#####  part 11 ::: binary map ----------
+print(model.th)
+
+# reformat threshold data
+th.reform <- function(th.list) {
+  th.reform.out <- list()
+  
+  for (i in 1:length(th.list)) {
+    th.df <- data.frame(th.list[[i]]$threshold)
+    colnames(th.df) = 'threshold'
+    th.reform.out[[i]] <- th.df
+  }
+  return(th.reform.out)
+}
+
+# reformat
+model.th <- th.reform(th.list = model.th)
+print(model.th)
+
+# get MTSS threshold == 7th value
+mtss.list <- list(model.th[[1]][7, ], model.th[[2]][7, ], model.th[[3]][7, ], model.th[[4]][7, ], model.th[[5]][7, ])
+
+# now generate binary maps
+bin <- bin_maker(preds = kor.pred, th = mtss.list)
+print(bin)
+
+# plot binary
+plot_preds(preds = bin, poly = kr_poly, ncol = 5, nrow = 1, colors = rev(terrain.colors(1000)), pred.names = names(bin))
+ggsave('output/plot/binary_output.png', width = 35, height = 8, dpi = 600, units = 'cm')
+
+
+#####  part 12 ::: extrapolation risk ----------
 
 # conduct MESS
 mess <- ntbox::ntb_mess(M_stack = envs.sub, G_stack = envs.prj)
